@@ -44,7 +44,9 @@
    $reset = *reset;
 
    $pc[31:0] = >>1$next_pc[31:0];
-   $next_pc[31:0] = $reset ? 32'b0 : $pc + 32'd4;
+   $next_pc[31:0] = $reset ? 32'b0 :
+                    ($is_b_instr & $taken_br) ? $br_tgt_pc
+                    : $pc + 32'd4;
    
    `READONLY_MEM($pc, $$instr[31:0])
    $is_u_instr = $instr[6:2] ==? 5'b0x101;
@@ -63,7 +65,7 @@
    $rs2_valid = $is_r_instr || $is_s_instr || $is_b_instr;
    $rs1_valid = $is_r_instr || $is_s_instr || $is_b_instr || $is_i_instr;
    $funct3_valid = $is_r_instr || $is_s_instr || $is_b_instr || $is_i_instr;
-   $rd_valid = $is_r_instr || $is_u_instr || $is_j_instr || $is_i_instr;
+   $rd_valid = $rd == 0 ? 0 : ($is_r_instr || $is_u_instr || $is_j_instr || $is_i_instr);
    $imm_valid = $is_s_instr || $is_u_instr || $is_j_instr || $is_i_instr || $is_b_instr;
    
    `BOGUS_USE($rd $rd_valid $rs1 $rs1_valid $rs2 $rs2_valid $funct3_valid $imm_valid $imm
@@ -87,11 +89,25 @@
    $is_addi = $dec_bits ==? 11'bx_000_0010011;
    $is_add = $dec_bits ==? 11'b0_000_0110011;
    
+   $result[31:0] = $is_addi ? $src1_value + $imm :
+                   $is_add ? $src1_value + $src2_value :
+                   32'b0;
+
+   $taken_br = $is_beq ? $src1_value == $src2_value :
+               $is_bne ? $src1_value != $src2_value :
+               $is_blt ? ($src1_value < $src2_value) ^ ($src1_value[31] != $src2_value[31]) :
+               $is_bge ? ($src1_value >= $src2_value) ^ ($src1_value[31] != $src2_value[31]) :
+               $is_bltu ? $src1_value < $src2_value :
+               $is_bgeu ? $src1_value >= $src2_value :
+               0;
+
+   $br_tgt_pc[31:0] = $pc + $imm;
+   
    // Assert these to end simulation (before Makerchip cycle limit).
-   *passed = 1'b0;
+   m4+tb()
    *failed = *cyc_cnt > M4_MAX_CYC;
    
-   m4+rf(32, 32, $reset, $wr_en, $wr_index[4:0], $wr_data[31:0], $rs1_valid, $rs1, $src1_value, $rs2_valid, $rs2, $src2_value)
+   m4+rf(32, 32, $reset, $rd_valid, $rd, $result, $rs1_valid, $rs1, $src1_value, $rs2_valid, $rs2, $src2_value)
    //m4+dmem(32, 32, $reset, $addr[4:0], $wr_en, $wr_data[31:0], $rd_en, $rd_data)
    m4+cpu_viz()
 \SV
