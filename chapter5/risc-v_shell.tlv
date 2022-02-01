@@ -16,12 +16,14 @@
    
    $reset = *reset;
 
+   // Controlling the program counter
    $pc[31:0] = >>1$next_pc[31:0];
    $next_pc[31:0] = $reset ? 32'b0 :
                     (($is_b_instr & $taken_br) || $is_jal) ? $br_tgt_pc
                     : $is_jalr ? $jalr_tgt_pc
                     : $pc + 32'd4;
    
+   // Determine the types of instructions
    `READONLY_MEM($pc, $$instr[31:0])
    $is_u_instr = $instr[6:2] ==? 5'b0x101;
    $is_s_instr = $instr[6:2] ==? 5'b0100x;
@@ -30,6 +32,7 @@
    $is_r_instr = ($instr[6:2] == 5'b01011 || $instr[6:2] ==? 5'b011x0 || $instr[6:2] == 5'b10100);
    $is_j_instr = $instr[6:2] == 5'b11011;
    
+   // Decoding and extracting information from the instructions
    $rs2[4:0] = $instr[24:20];
    $rs1[4:0] = $instr[19:15];
    $funct3[2:0] = $instr[14:12];
@@ -42,8 +45,9 @@
    $rd_valid = $rd == 0 ? 0 : ($is_r_instr || $is_u_instr || $is_j_instr || $is_i_instr);
    $imm_valid = $is_s_instr || $is_u_instr || $is_j_instr || $is_i_instr || $is_b_instr;
    
-   `BOGUS_USE($funct3_valid $is_load $imm_valid)
+   `BOGUS_USE($funct3_valid $imm_valid)
    
+   // Extracting the immediates
    $imm[31:0] = $is_i_instr ? { {21{$instr[31]}}, $instr[30:20] } :
                 $is_s_instr ? { {21{$instr[31]}}, $instr[30:25], $instr[11:7] } :
                 $is_b_instr ? { {20{$instr[31]}}, $instr[7], $instr[30:25], $instr[11:8], 1'b0 } :
@@ -53,6 +57,7 @@
    
    $dec_bits[10:0] = { $instr[30], $funct3, $opcode };
    
+   // Identify the instructions
    $is_lui = $dec_bits ==? 11'bx_xxx_0110111;
    $is_auipc = $dec_bits ==? 11'bx_xxx_0010111;
    $is_jal = $dec_bits ==? 11'bx_xxx_1101111;
@@ -97,7 +102,7 @@
    $sra_rslt[63:0] = $sext_src1 >> $src2_value[4:0];
    $srai_rslt[63:0] = $sext_src1 >> $imm[4:0];
    
-   
+   // Calculating the result using a multiplexer
    $result[31:0] = $is_addi ? $src1_value + $imm :
                    $is_andi ? $src1_value & $imm :
                    $is_ori ? $src1_value | $imm :
@@ -128,6 +133,7 @@
                    ($is_load || $is_s_instr) ? $src1_value + $imm :
                    32'b0;
 
+   // Branch logic for control flow
    $taken_br = $is_beq ? $src1_value == $src2_value :
                $is_bne ? $src1_value != $src2_value :
                $is_blt ? ($src1_value < $src2_value) ^ ($src1_value[31] != $src2_value[31]) :
